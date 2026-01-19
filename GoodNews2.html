@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pure Joy News</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script type="importmap">
+      {
+        "imports": {
+          "@google/generative-ai": "https://esm.run/@google/generative-ai"
+        }
+      }
+    </script>
+    <style>
+        .spin-animation { animation: spin 1s cubic-bezier(0.175, 0.885, 0.32, 1.275); }
+        @keyframes spin { 100% { transform: rotate(360deg); } }
+        body { background: #fdfcf6; }
+    </style>
+</head>
+<body class="flex flex-col items-center justify-center min-h-screen p-6 font-sans">
+
+    <div id="main-page" class="w-full max-w-md text-center space-y-10">
+        <header>
+            <div class="text-6xl mb-3">🌻</div>
+            <h1 class="text-4xl font-black text-amber-600 tracking-tight">Pure Joy</h1>
+            <p class="text-slate-500 font-medium">Uplifting news for you</p>
+        </header>
+        
+        <div id="article-display" class="hidden p-8 bg-white rounded-[2.5rem] shadow-2xl border-2 border-amber-100 transition-all">
+            <h3 id="article-title" class="text-2xl font-bold mb-6 text-slate-800 leading-tight"></h3>
+            <a id="article-link" href="#" target="_blank" class="inline-block bg-amber-500 text-white px-8 py-3 rounded-full font-bold shadow-md hover:bg-amber-600 transition">Read Story →</a>
+        </div>
+
+        <button id="spin-btn" class="bg-amber-500 text-white w-28 h-28 rounded-full text-2xl font-black shadow-xl active:scale-90 transition-transform flex items-center justify-center mx-auto border-8 border-white">
+            SPIN
+        </button>
+
+        <button id="settings-toggle" class="text-slate-400 text-xs font-bold tracking-widest uppercase opacity-50 hover:opacity-100 transition">Settings</button>
+    </div>
+
+    <div id="settings-page" class="hidden w-full max-w-md p-8 bg-white rounded-[2.5rem] shadow-2xl space-y-8">
+        <h2 class="text-2xl font-black text-slate-800">App Settings</h2>
+        <div class="space-y-5 text-left">
+            <div>
+                <label class="text-[10px] font-black text-slate-400 uppercase tracking-widest">Google AI API Key</label>
+                <input id="api-key" type="password" class="w-full p-4 mt-1 bg-slate-50 border-2 border-slate-100 rounded-2xl outline-none" placeholder="Paste key here">
+            </div>
+            <div>
+                <label class="text-[10px] font-black text-slate-400 uppercase tracking-widest">Model</label>
+                <select id="ai-model" class="w-full p-4 mt-1 bg-slate-50 border-2 border-slate-100 rounded-2xl">
+                    <option value="gemini-1.5-flash-latest">Gemini 1.5 Flash (Fast/Best)</option>
+                    <option value="gemini-1.5-pro-latest">Gemini 1.5 Pro</option>
+                </select>
+            </div>
+        </div>
+        <button id="save-settings" class="w-full bg-slate-900 text-white py-4 rounded-2xl font-bold shadow-lg">Save & Close</button>
+    </div>
+
+    <script type="module">
+        import { GoogleGenerativeAI } from "@google/generative-ai";
+
+        const btn = document.getElementById('spin-btn');
+        const display = document.getElementById('article-display');
+        const settingsPage = document.getElementById('settings-page');
+        const mainPage = document.getElementById('main-page');
+        const apiKeyInput = document.getElementById('api-key');
+        const modelSelect = document.getElementById('ai-model');
+
+        apiKeyInput.value = localStorage.getItem('gemini_key') || '';
+        modelSelect.value = localStorage.getItem('gemini_model') || 'gemini-1.5-flash-latest';
+
+        document.getElementById('settings-toggle').onclick = () => {
+            mainPage.classList.add('hidden');
+            settingsPage.classList.remove('hidden');
+        };
+
+        document.getElementById('save-settings').onclick = () => {
+            localStorage.setItem('gemini_key', apiKeyInput.value);
+            localStorage.setItem('gemini_model', modelSelect.value);
+            settingsPage.classList.add('hidden');
+            mainPage.classList.remove('hidden');
+        };
+
+        async function spinNews() {
+            const key = localStorage.getItem('gemini_key');
+            const modelName = localStorage.getItem('gemini_model');
+            if (!key) { alert("Please enter your API key in Settings!"); return; }
+
+            btn.classList.add('spin-animation');
+            btn.disabled = true;
+            btn.innerText = "⏳";
+
+            try {
+                // Fetch random good news article
+                const rss = await fetch(`https://api.rss2json.com/v1/api.json?rss_url=https://www.goodnewsnetwork.org/category/news/feed/`);
+                const data = await rss.json();
+                const randomArticle = data.items[Math.floor(Math.random() * data.items.length)];
+
+                // Call Gemini via SDK
+                const genAI = new GoogleGenerativeAI(key);
+                const model = genAI.getGenerativeModel({ 
+                    model: modelName,
+                    generationConfig: { responseMimeType: "application/json" }
+                });
+
+                const prompt = `Act as a Positivity Curator. Analyze this news:
+                Title: ${randomArticle.title}
+                Content: ${randomArticle.description}
+
+                STRICT RULES:
+                1. EXCLUDE: Politics, Trump, COVID, Climate Change, War, or Stress.
+                2. INCLUDE: Humanity, kindness, animal rescues, or small wins.
+                3. Article must be less than 1 week old.
+                4. Return JSON: {"status": "approved", "title": "Cheerful Title"} or {"status": "rejected"}`;
+
+                const result = await model.generateContent(prompt);
+                const aiResponse = JSON.parse(result.response.text());
+
+                if (aiResponse.status === 'approved') {
+                    document.getElementById('article-title').innerText = aiResponse.title;
+                    document.getElementById('article-link').href = randomArticle.link;
+                    display.classList.remove('hidden');
+                } else {
+                    spinNews(); // Automatic retry if rejected
+                }
+            } catch (error) {
+                console.error(error);
+                alert("SPIN FAILED\n\nError: " + error.message + "\n\nTip: Use 'gemini-1.5-flash-latest' in Settings.");
+            } finally {
+                btn.classList.remove('spin-animation');
+                btn.disabled = false;
+                btn.innerText = "SPIN";
+            }
+        }
+        btn.onclick = spinNews;
+    </script>
+</body>
+</html>
