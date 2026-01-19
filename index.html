@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pure Joy</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script type="importmap">
+      { "imports": { "@google/generative-ai": "https://esm.run/@google/generative-ai" } }
+    </script>
+    <style>
+        .spin-animation { animation: spin 1s linear infinite; }
+        @keyframes spin { 100% { transform: rotate(360deg); } }
+        body { background: #f8fafc; -webkit-tap-highlight-color: transparent; }
+    </style>
+</head>
+<body class="flex flex-col items-center justify-center min-h-screen p-6 font-sans">
+
+    <div id="main-page" class="w-full max-w-md text-center space-y-10">
+        <header>
+            <div class="text-6xl mb-2">☀️</div>
+            <h1 class="text-4xl font-black text-blue-600">Pure Joy</h1>
+            <p class="text-slate-500 font-medium italic">Good news only.</p>
+        </header>
+        
+        <div id="display" class="hidden p-8 bg-white rounded-[2rem] shadow-2xl border-b-8 border-blue-400 animate-in fade-in zoom-in duration-300">
+            <h3 id="title" class="text-2xl font-bold mb-6 text-slate-800 leading-snug"></h3>
+            <a id="link" href="#" target="_blank" class="inline-block bg-blue-600 text-white px-8 py-3 rounded-full font-bold shadow-lg active:scale-95 transition">Read Story →</a>
+        </div>
+
+        <button id="spin-btn" class="bg-blue-600 text-white w-28 h-28 rounded-full text-2xl font-black shadow-xl active:scale-90 transition-transform flex items-center justify-center mx-auto border-8 border-white">
+            SPIN
+        </button>
+
+        <button id="set-btn" class="text-slate-400 text-xs font-bold tracking-widest uppercase opacity-50">Settings</button>
+    </div>
+
+    <div id="settings-page" class="hidden w-full max-w-md p-8 bg-white rounded-[2rem] shadow-2xl space-y-8">
+        <h2 class="text-2xl font-black text-slate-800 text-center">Setup</h2>
+        <div class="space-y-4">
+            <input id="api-key" type="password" class="w-full p-4 bg-slate-50 border-2 border-slate-100 rounded-2xl outline-none" placeholder="Paste Gemini Key">
+            <select id="model-select" class="w-full p-4 bg-slate-50 border-2 border-slate-100 rounded-2xl">
+                <option value="gemini-1.5-flash">Gemini 1.5 Flash (Fast)</option>
+                <option value="gemini-1.5-pro">Gemini 1.5 Pro (Deep)</option>
+            </select>
+        </div>
+        <button id="save-btn" class="w-full bg-slate-900 text-white py-4 rounded-2xl font-bold shadow-lg">Save & Close</button>
+    </div>
+
+    <script type="module">
+        import { GoogleGenerativeAI } from "@google/generative-ai";
+
+        const btn = document.getElementById('spin-btn');
+        const display = document.getElementById('display');
+        const main = document.getElementById('main-page');
+        const settings = document.getElementById('settings-page');
+        const keyInput = document.getElementById('api-key');
+        const modSelect = document.getElementById('model-select');
+
+        keyInput.value = localStorage.getItem('g_key') || '';
+        modSelect.value = localStorage.getItem('g_model') || 'gemini-1.5-flash';
+
+        document.getElementById('set-btn').onclick = () => { main.classList.add('hidden'); settings.classList.remove('hidden'); };
+        document.getElementById('save-btn').onclick = () => { 
+            localStorage.setItem('g_key', keyInput.value); 
+            localStorage.setItem('g_model', modSelect.value);
+            settings.classList.add('hidden'); main.classList.remove('hidden'); 
+        };
+
+        btn.onclick = async () => {
+            const key = localStorage.getItem('g_key');
+            if (!key) return alert("Enter API key in Settings!");
+            
+            btn.classList.add('spin-animation'); btn.disabled = true; btn.innerText = "⏳";
+            
+            try {
+                const rss = await fetch(`https://api.rss2json.com/v1/api.json?rss_url=https://www.goodnewsnetwork.org/category/news/feed/`);
+                const data = await rss.json();
+                const item = data.items[Math.floor(Math.random() * data.items.length)];
+
+                const genAI = new GoogleGenerativeAI(key);
+                const model = genAI.getGenerativeModel({ model: localStorage.getItem('g_model') });
+
+                const prompt = `Assess if this news is purely positive and uplifting.
+                Rule: NO politics, NO Trump, NO diseases, NO climate change, NO stress.
+                Title: ${item.title}
+                Content: ${item.description}
+                Return JSON only: {"status": "approved", "title": "Uplifting Title"} or {"status": "rejected"}`;
+
+                const result = await model.generateContent({
+                    contents: [{ parts: [{ text: prompt }] }],
+                    generationConfig: { responseMimeType: "application/json" }
+                });
+
+                const aiRes = JSON.parse(result.response.text());
+                if (aiRes.status === 'approved') {
+                    document.getElementById('title').innerText = aiRes.title;
+                    document.getElementById('link').href = item.link;
+                    display.classList.remove('hidden');
+                } else { btn.onclick(); } // Auto-retry
+            } catch (e) { alert("Error: Use a valid key and ensure your repo is Public on GitHub Pages."); }
+            finally { btn.classList.remove('spin-animation'); btn.disabled = false; btn.innerText = "SPIN"; }
+        };
+    </script>
+</body>
+</html>
